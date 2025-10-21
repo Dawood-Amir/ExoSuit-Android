@@ -329,7 +329,7 @@ fun GuidedRecordingScreen(viewModel: EmgViewModel, navController: NavController)
                 }
             }
 
-            // Pause recording at end of step (don't save yet)
+            // Pause recording at end of step
             viewModel.pauseRecording()
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
 

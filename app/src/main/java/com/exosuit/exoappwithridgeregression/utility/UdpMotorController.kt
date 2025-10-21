@@ -1,5 +1,7 @@
 package com.exosuit.exoappwithridgeregression.utility
 
+import android.content.Context
+import android.net.wifi.WifiManager
 import android.util.Base64
 import android.util.Log
 import com.exosuit.exoappwithridgeregression.data_classes.ModelType
@@ -22,9 +24,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.locks.ReentrantLock
 
-//// this is fine (255.255.255.255) its sending
-//        // to everyone so use it when in lab .. but it cause chunk not recived
-//        //private val  serverIp = "192.168.237.1"
 
 class UdpMotorController private constructor(private val appScope: CoroutineScope) {
 
@@ -32,19 +31,61 @@ class UdpMotorController private constructor(private val appScope: CoroutineScop
         @Volatile
         private var instance: UdpMotorController? = null
 
-        private const val serverIp = "192.168.1.27"
+       //private const val serverIp = "192.168.1.16"
+        private var serverIp: String? = null
         private const val motorPort = 3350  // Changed to match Python motor_settings_port
         private const val startSignalPort = 3352  // Changed to match Python start_signal_port
-
-        private const val trainingServerIp = "192.168.1.27"
+        private const val disconnectPort = 3358
+        //private const val trainingServerIp = "192.168.1.16"
+        private var trainingServerIp: String? =  null
         private const val trainingServerPort = 12346
         private const val trainedModelListenPort = 12347
 
 
-        fun getInstance(appScope: CoroutineScope): UdpMotorController {
+        fun getRaspiServerIp(context: Context): String { //Change if needed
+            return "10.207.176.1"
+        }
+        fun getTrainingServerIp(context: Context): String {
+            return "10.207.176.1"
+        }
+
+            fun getInstance(appScope: CoroutineScope , context: Context): UdpMotorController {
             return instance ?: synchronized(this) {
-                instance ?: UdpMotorController(appScope).also { instance = it }
+                instance ?: UdpMotorController(appScope).also {
+                    instance = it
+
+                    serverIp = getLocalIp(context) // remove if dont need later
+                    trainingServerIp = getLocalIp(context)
+
+                }
             }
+        }
+/*        fun getInstance(appScope: CoroutineScope): UdpMotorController {
+            return instance ?: synchronized(this) {
+                instance ?: UdpMotorController(appScope).also {
+                    instance = it
+
+                }
+
+            }
+        }*/
+
+
+        fun getLocalIp(context: Context): String {
+            val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val ipInt = wm.connectionInfo.ipAddress
+            val ipString = String.format(
+                "%d.%d.%d.%d",
+                ipInt and 0xFF,
+                ipInt shr 8 and 0xFF,
+                ipInt shr 16 and 0xFF,
+                ipInt shr 24 and 0xFF
+            )
+
+            // Log the IP
+            Log.d("WristEMG", "Local IP: $ipString")
+
+            return ipString
         }
     }
 
@@ -114,8 +155,31 @@ class UdpMotorController private constructor(private val appScope: CoroutineScop
             }
         }
     }
+    fun sendDisconnectSignal(context: Context, onComplete: (Boolean, String?) -> Unit) {
+        appScope.launch(Dispatchers.IO) {
+            try {
+                val socket = DatagramSocket()
+                val message = JSONObject().apply {
+                    put("command", "disconnect")
+                }.toString()
+                val packet = DatagramPacket(
+                    message.toByteArray(),
+                    message.length,
+                    InetAddress.getByName(getRaspiServerIp(context)),
+                    disconnectPort
+                )
+                socket.send(packet)
+                socket.close()
 
-    fun sendMotorSettings(settings: MotorSettings, onComplete: (Boolean, String?) -> Unit) {
+                // Update connection state to DISCONNECTED
+                _connectionState.value = ConnectionState.DISCONNECTED
+                onComplete(true, null)
+            } catch (e: Exception) {
+                onComplete(false, e.message)
+            }
+        }
+    }
+    fun sendMotorSettings(context: Context ,settings: MotorSettings, onComplete: (Boolean, String?) -> Unit  ) {
         appScope.launch(Dispatchers.IO) {
             try {
                 val socket = DatagramSocket()
@@ -123,7 +187,7 @@ class UdpMotorController private constructor(private val appScope: CoroutineScop
                 val packet = DatagramPacket(
                     message.toByteArray(),
                     message.length,
-                    InetAddress.getByName(serverIp),
+                    InetAddress.getByName(getRaspiServerIp(context)),
                     motorPort
                 )
                 socket.send(packet)
@@ -138,7 +202,7 @@ class UdpMotorController private constructor(private val appScope: CoroutineScop
         }
     }
 
-    fun sendStartSignal(onComplete: (Boolean, String?) -> Unit) {
+    fun sendStartSignal( context: Context , onComplete: (Boolean, String?) -> Unit ) {
         if (_connectionState.value != ConnectionState.READY_TO_START) {
             onComplete(false, "Not ready to start")
             return
@@ -153,7 +217,7 @@ class UdpMotorController private constructor(private val appScope: CoroutineScop
                 val packet = DatagramPacket(
                     message.toByteArray(),
                     message.length,
-                    InetAddress.getByName(serverIp),
+                    InetAddress.getByName(getRaspiServerIp(context)),
                     startSignalPort
                 )
                 socket.send(packet)
@@ -169,7 +233,7 @@ class UdpMotorController private constructor(private val appScope: CoroutineScop
     }
 
 
-    fun sendRegressionValues(regressionValues: DoubleArray) {
+    fun sendRegressionValues(regressionValues: DoubleArray ,context: Context) {
         if (regressionValues.size != 4) {
             Log.e("UdpMotorController", "Regression values must contain exactly 4 elements")
             return
@@ -188,7 +252,7 @@ class UdpMotorController private constructor(private val appScope: CoroutineScop
                         regressionSocket?.close() // Close if exists but is closed
                         regressionSocket = DatagramSocket().apply {
                             reuseAddress = true
-                            soTimeout = 5000 // Set a reasonable timeout
+                            soTimeout = 100 // Set a reasonable timeout
                         }
                     }
                     regressionSocket!!
@@ -204,7 +268,7 @@ class UdpMotorController private constructor(private val appScope: CoroutineScop
                 val packet = DatagramPacket(
                     byteBuffer.array(),
                     byteBuffer.array().size,
-                    InetAddress.getByName(serverIp),
+                    InetAddress.getByName(getRaspiServerIp(context )),
                     3340 // myo_reg_val_port from Python config
                 )
 
@@ -366,7 +430,7 @@ class UdpMotorController private constructor(private val appScope: CoroutineScop
         sendSocket = null
     }
 
-    fun sendTrainingData(csvData: String, modelType: ModelType, onComplete: (Boolean, String) -> Unit) {
+    fun sendTrainingData(context: Context ,csvData: String, modelType: ModelType, onComplete: (Boolean, String) -> Unit ) {
         prepareForNewTraining()
         sendSocket = DatagramSocket().apply { reuseAddress = true }
 
@@ -374,7 +438,7 @@ class UdpMotorController private constructor(private val appScope: CoroutineScop
             try {
                 val socket = sendSocket ?: return@launch
                 val data = csvData.toByteArray()
-                val trainingAddress = InetAddress.getByName(trainingServerIp)
+                val trainingAddress = InetAddress.getByName(getTrainingServerIp(context))
                 val chunkSize = 1400
                 val totalChunks = (data.size + chunkSize - 1) / chunkSize
                 val chunksMap = (0 until totalChunks).associateWith { i ->

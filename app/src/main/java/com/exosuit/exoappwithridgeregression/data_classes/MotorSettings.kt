@@ -3,100 +3,88 @@ package com.exosuit.exoappwithridgeregression.data_classes
 import org.json.JSONObject
 
 data class MotorSettings(
-    // Impedance control parameters
-    val kp: Float = 5.0f,
-    val kd: Float = 0.5f,
+    // Position control parameters
+    val positionKp: Float = 8.0f,
+    val positionKd: Float = 0.8f,
+    val movementSpeed: Float = 0.8f,
 
     // Safety limits
-    val maxTorque: Float = 8.0f,
-    val maxVelocity: Float = 2.0f,
+    val maxVelocity: Float = 4.0f,
+    val upperPositionLimit: Float = 1.8f,
+    val lowerPositionLimit: Float = -1.8f,
 
-    // Position limits
-    val upperPositionLimit: Float = 1.57f,
-    val lowerPositionLimit: Float = -1.57f,
+    // Strength scaling parameters
+    val extensionStrengthScale: Float = 1.0f,
+    val flexionStrengthScale: Float = 1.0f,
+    val minMovementThreshold: Float = 0.1f,
 
-    // Mode selection
-    val candleMode: Int = 1,
-    val motorId: Int = 0,
-
-    // Force parameters (renamed to match Python expected keys)
-    val extensionStrengthMax: Float = 6.0f,    // was extensionBigForce
-    val flexionStrengthMax: Float = 7.0f,      // was flexionBigForce
-    val minTorqueExtension: Float = 0.3f,      // was extensionSmallForce
-    val minTorqueFlexion: Float = 0.5f,        // was flexionSmallForce
-
-    // New parameters for Python handshake
-    val baseTorque: Float = 0.2f,
-    val alpha: Float = 0.1f
+    // Comfort parameters
+    val smoothingFactor: Float = 0.05f,
+    val deadzoneThreshold: Float = 0.05f
 ) {
     companion object {
-        // Stiffness (kp)
-        const val KP_MIN = 0.3f
-        const val KP_MAX = 5.0f
-        const val KP_DEFAULT = 5.0f
+        // Position control parameters
+        const val POSITION_KP_MIN = 0.5f
+        const val POSITION_KP_MAX = 15.0f
+        const val POSITION_KP_DEFAULT = 8.0f
 
-        // Damping (kd)
-        const val KD_MIN = 0.015f
-        const val KD_MAX = 0.5f
-        const val KD_DEFAULT = 0.5f
+        const val POSITION_KD_MIN = 0.01f
+        const val POSITION_KD_MAX = 3.0f
+        const val POSITION_KD_DEFAULT = 0.8f
 
-        // Torque parameters
-        const val MAX_TORQUE_MIN = 4.0f
-        const val MAX_TORQUE_MAX = 12.0f
-        const val MAX_TORQUE_DEFAULT = 8.0f
+        const val MOVEMENT_SPEED_MIN = 0.1f
+        const val MOVEMENT_SPEED_MAX = 2.0f
+        const val MOVEMENT_SPEED_DEFAULT = 0.8f
 
-        // Velocity parameters
-        const val MAX_VELOCITY_MIN = 1.0f
-        const val MAX_VELOCITY_MAX = 3.0f
-        const val MAX_VELOCITY_DEFAULT = 2.0f
+        // Safety limits
+        const val MAX_VELOCITY_MIN = 0.5f
+        const val MAX_VELOCITY_MAX = 10.0f
+        const val MAX_VELOCITY_DEFAULT = 4.0f
 
-        // Position parameters
-        const val UPPER_POSITION_LIMIT_MIN = 0.79f
-        const val UPPER_POSITION_LIMIT_MAX = 3.14f
-        const val UPPER_POSITION_LIMIT_DEFAULT = 1.57f
+        const val UPPER_POSITION_LIMIT_MIN = 0.5f
+        const val UPPER_POSITION_LIMIT_MAX = 2.5f
+        const val UPPER_POSITION_LIMIT_DEFAULT = 1.8f
 
-        const val LOWER_POSITION_LIMIT_MIN = -3.14f
-        const val LOWER_POSITION_LIMIT_MAX = -0.79f
-        const val LOWER_POSITION_LIMIT_DEFAULT = -1.57f
+        const val LOWER_POSITION_LIMIT_MIN = -2.5f
+        const val LOWER_POSITION_LIMIT_MAX = -0.5f
+        const val LOWER_POSITION_LIMIT_DEFAULT = -1.8f
 
-        // Force parameters (updated names)
-        const val EXTENSION_STRENGTH_MAX_MIN = 4.0f
-        const val EXTENSION_STRENGTH_MAX_MAX = 10.0f
-        const val EXTENSION_STRENGTH_MAX_DEFAULT = 6.0f
+        // Strength scaling
+        const val EXTENSION_STRENGTH_SCALE_MIN = 0.3f
+        const val EXTENSION_STRENGTH_SCALE_MAX = 1.5f
+        const val EXTENSION_STRENGTH_SCALE_DEFAULT = 1.0f
 
-        const val FLEXION_STRENGTH_MAX_MIN = 4.0f
-        const val FLEXION_STRENGTH_MAX_MAX = 10.0f
-        const val FLEXION_STRENGTH_MAX_DEFAULT = 7.0f
+        const val FLEXION_STRENGTH_SCALE_MIN = 0.3f
+        const val FLEXION_STRENGTH_SCALE_MAX = 1.5f
+        const val FLEXION_STRENGTH_SCALE_DEFAULT = 1.0f
 
-        const val MIN_TORQUE_EXTENSION_MIN = 0.1f
-        const val MIN_TORQUE_EXTENSION_MAX = 1.0f
-        const val MIN_TORQUE_EXTENSION_DEFAULT = 0.3f
+        const val MIN_MOVEMENT_THRESHOLD_MIN = 0.05f
+        const val MIN_MOVEMENT_THRESHOLD_MAX = 0.3f
+        const val MIN_MOVEMENT_THRESHOLD_DEFAULT = 0.1f
 
-        const val MIN_TORQUE_FLEXION_MIN = 0.1f
-        const val MIN_TORQUE_FLEXION_MAX = 1.0f
-        const val MIN_TORQUE_FLEXION_DEFAULT = 0.5f
+        // Comfort parameters
+        const val SMOOTHING_FACTOR_MIN = 0.01f
+        const val SMOOTHING_FACTOR_MAX = 0.3f
+        const val SMOOTHING_FACTOR_DEFAULT = 0.05f
 
-        // New parameters defaults
-        const val BASE_TORQUE_MIN = 0.1f
-        const val BASE_TORQUE_MAX = 1.0f
-        const val BASE_TORQUE_DEFAULT = 0.2f
-
-        const val ALPHA_MIN = 0.0f
-        const val ALPHA_MAX = 1.0f
-        const val ALPHA_DEFAULT = 0.1f
+        const val DEADZONE_THRESHOLD_MIN = 0.0f
+        const val DEADZONE_THRESHOLD_MAX = 0.2f
+        const val DEADZONE_THRESHOLD_DEFAULT = 0.05f
     }
 
     fun toJson(): String {
         return JSONObject().apply {
-            put("kp", kp)
-            put("kd", kd)
-            put("maxTorque", maxTorque)
-            put("extensionStrengthMax", extensionStrengthMax)
-            put("flexionStrengthMax", flexionStrengthMax)
-            put("minTorqueExtension", minTorqueExtension)
-            put("minTorqueFlexion", minTorqueFlexion)
-            put("baseTorque", baseTorque)
-            put("alpha", alpha)
+            put("positionKp", positionKp)
+            put("positionKd", positionKd)
+            put("movementSpeed", movementSpeed)
+            put("maxVelocity", maxVelocity)
+            put("upperPositionLimit", upperPositionLimit)
+            put("lowerPositionLimit", lowerPositionLimit)
+            put("extensionStrengthScale", extensionStrengthScale)
+            put("flexionStrengthScale", flexionStrengthScale)
+            put("minMovementThreshold", minMovementThreshold)
+            put("smoothingFactor", smoothingFactor)
+            put("deadzoneThreshold", deadzoneThreshold)
         }.toString()
     }
 }

@@ -47,7 +47,7 @@ import kotlin.math.pow
 
 
 /**
- * ViewModel to handle EMG data recording, labeling, preprocessing, model loading, and prediction.
+ * ViewModel to handle EMG data recording, labeling, preprocessing, model training loading, and prediction.
  */
 
 class EmgViewModel(application: Application) : AndroidViewModel(application) {
@@ -83,7 +83,6 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
         RecordingStep("Full Extension", listOf(0f, 1f, 0f, 0f)),
         RecordingStep("Full Flexion", listOf(0f, 0f, 1f, 0f)),
         RecordingStep("Rest", listOf(0f, 0f, 0f, 1f))
-
     )
 
     private val _permissionsGranted = mutableStateOf(false)
@@ -105,15 +104,14 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
     private val udpController: UdpMotorController
 
 
-    val motorConnectionState : StateFlow<UdpMotorController.ConnectionState>
+    val motorConnectionState: StateFlow<UdpMotorController.ConnectionState>
         get() = udpController.connectionState
 
 
     init {
-        // Step 1: create instance
-        udpController = UdpMotorController.getInstance(ProcessLifecycleOwner.get().lifecycleScope)
 
-        // Step 2: set callbacks
+        udpController = UdpMotorController.getInstance(ProcessLifecycleOwner.get().lifecycleScope , getApplication())
+
         udpController.ridgeCallback = { modelJson ->
             try {
                 // Parse the JSON to determine the model type
@@ -158,7 +156,7 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
 
         loadModel()
     }
-
+    var lastRecordedDataPath: String? = null
 
     fun sendDataToTrainingServer(csvPath: String) {
         val csvFile = File(csvPath)
@@ -171,8 +169,8 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
         _trainingProgress.value = 0
         _modelReady.value = false
         _trainingStatus.value = "Starting new training..."
-
-        udpController.sendTrainingData(csvContent, trainingModelType) { success, message ->
+        lastRecordedDataPath = csvPath
+        udpController.sendTrainingData(getApplication() , csvContent, trainingModelType ) { success, message ->
             _trainingStatus.value = message
             if (success) {
                 _trainingStatus.value = "Data sent, waiting for models..."
@@ -183,7 +181,30 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+    //Retry Training have bug in it
+    fun retryTraining(csvPath: String) {
+        val csvFile = File(csvPath)
+        if (!csvFile.exists()) {
+            _trainingStatus.value = "CSV file not found: $csvPath"
+            return
+        }
 
+        // Reset training state
+        _trainingProgress.value = 0
+        _modelReady.value = false
+        _trainingStatus.value = "Retrying training..."
+
+        // Send data again
+        val csvContent = csvFile.readText()
+        udpController.sendTrainingData(getApplication() ,csvContent, trainingModelType) { success, message ->
+            _trainingStatus.value = message
+            if (success) {
+                _trainingStatus.value = "Data sent, waiting for models..."
+            } else {
+                _trainingStatus.value = "Failed to send data: $message"
+            }
+        }
+    }
 
     fun setPermissionsGranted(granted: Boolean) {
         _permissionsGranted.value = granted
@@ -242,11 +263,10 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
         if (isRecording.value && currentLabel != null) {
             // val features = emgProcessor.processSample(sample)
             // recordedData.add(features to (currentLabel ?: 0f))
-            recordedData.add(sample to (currentLabel ?: listOf(0f,0f,0f,1f)))
+            recordedData.add(sample to (currentLabel ?: listOf(0f, 0f, 0f, 1f)))
         }
         if (!isRecording.value) {
             processSampleForPrediction(sample)
-            // sendPredictionToPi(predictedValue.value)
         }
     }
 
@@ -306,35 +326,6 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
 
 
 
-  /*  fun loadTfliteInterpreter(tflitePath: String) {
-        try {
-            val file = File(getApplication<Application>().filesDir, tflitePath)
-            if (file.exists()) {
-                tfliteInterpreter = Interpreter(file)
-                _modelReady.value = true
-                _selectedModel.value = file.name
-                Log.d("MyoScan", "TFLite interpreter loaded from $tflitePath")
-
-                // Set default preprocessing so model is never null
-                model = ModelData.RidgeModel(
-                    intercept = 0.0,
-                    coef = emptyList(),
-                    preprocessing = ModelData.RidgeModel.PreprocessingParams(
-                        window_size = 60,
-                        features = listOf("rms", "mav"),
-                        mse = 0.0,   // placeholder for Ridge-only fields
-                        mae = 0.0
-                    )
-                )
-            } else {
-                Log.d("MyoScan", "TFLite file not found")
-            }
-        } catch (e: Exception) {
-            Log.e("MyoScan", "Failed to load TFLite interpreter", e)
-        }
-    }
-*/
-
     fun loadTfliteInterpreter(tflitePath: String) {
         try {
             val file = File(getApplication<Application>().filesDir, tflitePath)
@@ -358,6 +349,7 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
             Log.e("MyoScan", "Failed to load TFLite interpreter", e)
         }
     }
+
     fun checkModelExists() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -404,7 +396,11 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
                         val jsonObj = JSONObject(json)
 
                         model = when (jsonObj.getString("type")) {
-                            "RIDGE_FOR_EXO" -> Gson().fromJson(json, ModelData.RidgeExoModel::class.java)
+                            "RIDGE_FOR_EXO" -> Gson().fromJson(
+                                json,
+                                ModelData.RidgeExoModel::class.java
+                            )
+
                             else -> null
                         }
 
@@ -432,6 +428,7 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
     fun toggleModelActive(active: Boolean) {
         _modelActive.value = active
     }
@@ -441,6 +438,7 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
     val smoothedAngle: StateFlow<Float> = _smoothedAngle.asStateFlow()
 
     private val smoothingFactor = 0.2f
+
     private fun processSampleForPrediction(sample: List<Float>) {
         if (!_modelActive.value || model == null) return
 
@@ -465,16 +463,16 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
         val features = extractFeatures(buffer, featuresList)
         val prediction = predictModel(features)
 
-        //should send prediction to raspi here
-        sendPredictionValues(prediction)
+
+        //sendPredictionValues(prediction)
 
         Log.d("MyoScan", "prediction : " + prediction.joinToString(", ") { "%.3f".format(it) })
         // --- Convert probabilities -> continuous angle ---
-        val classAngles = listOf(-45.0, -22.5, 22.5, 45.0)
-        val continuousAngle = prediction
-            .mapIndexed { index, prob -> prob * classAngles[index] }
-            .sum()
-            .toFloat()
+
+        val classAngles = listOf(0.0, -45.0, 45.0, 0.0)
+
+        val maxIndex = prediction.indices.maxByOrNull { prediction[it] } ?: 0
+        val continuousAngle = classAngles[maxIndex].toFloat()
 
         // --- Smooth with EMA ---
         val prevAngle = _smoothedAngle.value
@@ -491,8 +489,15 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
 
         // Update the predicted value
         predictedValue.value = prediction
+        sendPredictionValues(prediction)
 
     }
+
+
+
+
+
+
 
     //should be in this format [0.8, 0.1, 0.05, 0.05] -> Strong isometric
     fun sendPredictionValues(regressionValues: DoubleArray) {
@@ -506,8 +511,13 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
             Log.w("UdpMotorController", "Not connected, skipping regression values send")
             return
         }
-
-        udpController.sendRegressionValues(regressionValues)
+        Log.d(
+            "MyoScan",
+            "pridiction values being sent to exo".format(
+                regressionValues
+            )
+        )
+        udpController.sendRegressionValues(regressionValues ,getApplication())
     }
 
 
@@ -542,7 +552,6 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 
-
     // Track current features for UI/debug  // For Analysis
     private var _currentFeatures: List<Double>? = null
 
@@ -573,12 +582,14 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
                     append("Features: ${ridgeModel.preprocessing.features.joinToString(", ")}\n")
                     append("Type: Ridge for Exo\n")
                 }
+
                 is ModelData.MLPModel -> {
                     val mlpModel = model as ModelData.MLPModel
                     append("Window size: ${mlpModel.preprocessing.window_size}\n")
                     append("Features: ${mlpModel.preprocessing.features.joinToString(", ")}\n")
                     append("Type: MLP\n")
                 }
+
                 else -> {
                     append("Window size: Unknown\n")
                     append("Features: Unknown\n")
@@ -626,9 +637,9 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 header.append("iso_pred,extend_pred,flex_pred,rest_pred") // Update header for 4 outputs
 
-               /* val dataLines = _exportHistory.joinToString("\n") { (features, preds) ->
-                    features.joinToString(",") + ",${preds[0]},${preds[1]},${preds[2]},${preds[3]}"
-                }*/
+                /* val dataLines = _exportHistory.joinToString("\n") { (features, preds) ->
+                     features.joinToString(",") + ",${preds[0]},${preds[1]},${preds[2]},${preds[3]}"
+                 }*/
 
                 val file = File(getApplication<Application>().filesDir, filename)
                 //file.writeText(metadata.toString() + header.toString() + "\n" + dataLines)
@@ -743,7 +754,7 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
         if (tfliteInterpreter == null) return doubleArrayOf(0.0, 0.0, 0.0, 1.0)
 
         val input = arrayOf(features)
-        val output = Array(1) { FloatArray(4) } // 4 outputs instead of 1
+        val output = Array(1) { FloatArray(4) } // 4 outputs
         tfliteInterpreter!!.run(input, output)
 
         // Convert to DoubleArray
@@ -827,8 +838,8 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
                             connectedMyo?.sendCommand(CommandList.emgUnfilteredOnly())
                             emgDataDisposable = connectedMyo?.dataFlowable()?.subscribe({ emgData ->
                                 // Log.d("MyoScan", "EMG: ${emgData.joinToString()}")
-                                // so much log so commenting it for now
-                                onNewEmgSample(emgData.toList())  // <-- send EMG to ViewModel
+
+                                onNewEmgSample(emgData.toList())  //  send EMG to use
                             }, { error ->
                                 Log.e("MyoScan", "EMG error: ${error.message}")
                                 _myoStatus.value = MyoStatus.DISCONNECTED
@@ -836,9 +847,7 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
                             })
                         }, 500)
                     } catch (e: Exception) {
-                        //Should make the MYOstatus = to null or nothing .. getting error here after
-                        // long time
-                        // when the myo isbeing used but it shows connected
+
                         Log.e("MyoScan", "EMG error: ${e.message}")
                     }
 
@@ -871,10 +880,9 @@ class EmgViewModel(application: Application) : AndroidViewModel(application) {
             udpController.cleanupAfterSession()
             udpController.closeRegressionSocket()
             disconnectMyo()
-        }catch (e:Exception){
-            Log.e("MyoScan",e.message.toString())
+        } catch (e: Exception) {
+            Log.e("MyoScan", e.message.toString())
         }
     }
 
 }
-

@@ -41,7 +41,11 @@ fun TrainingProgressScreen(viewModel: EmgViewModel, navController: NavController
         }
     }
 
-
+    // Determine if Retry button should show
+    val showRetry = trainingStatus.contains("Error", ignoreCase = true) ||
+            trainingStatus.contains("timeout", ignoreCase = true) ||
+            trainingStatus.contains("Failed", ignoreCase = true) ||
+            trainingStatus.startsWith("SERVER_ERROR", ignoreCase = true)
 
     Column(
         modifier = Modifier
@@ -84,22 +88,37 @@ fun TrainingProgressScreen(viewModel: EmgViewModel, navController: NavController
             ) {
                 Text("Done")
             }
-        } else if (trainingStatus.contains("Error", ignoreCase = true) ||
-            trainingStatus.contains(
-                "timeout",
-                ignoreCase = true
-            ) || trainingStatus.contains("Failed", ignoreCase = true) ||
-            trainingStatus.startsWith("SERVER_ERROR", ignoreCase = true)
-        ) {
-            Button(
-                onClick = {  navController.navigate(NavGraph.Screen.EmgHome.route) {
-                    popUpTo(NavGraph.Screen.GuidedRecording.route) { inclusive = true }
-                } }
-            ) {
-                Text("Back to Home")
+        } else {
+            // Back to Home button always visible on failure
+            if (showRetry) {
+                Button(
+                    onClick = {
+                        navController.navigate(NavGraph.Screen.EmgHome.route) {
+                            popUpTo(NavGraph.Screen.GuidedRecording.route) { inclusive = true }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Back to Home")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Retry button
+               /* Button(
+                    onClick = {
+                        viewModel.lastRecordedDataPath?.let { path ->
+                            viewModel.retryTraining(path)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Retry")
+                }*/
             }
         }
     }
+
 
     // Automatically go back when training is complete
     if (trainingProgress == 100) {

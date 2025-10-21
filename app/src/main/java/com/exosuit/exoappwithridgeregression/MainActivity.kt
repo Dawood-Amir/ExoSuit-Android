@@ -60,11 +60,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        /*setContent {
-            ExoAppWithRidgeRegressionTheme {
-                EmgScreen(emgViewModel, this)
-            }
-        }*/
     }
 
  /*   override fun onDestroy() {
@@ -78,31 +73,3 @@ class MainActivity : ComponentActivity() {
 }
 
 
-
-
-/*
-
-class MainActivity : ComponentActivity() {
-    private val emgViewModel: EmgViewModel by viewModels()
-    private val scope = CoroutineScope(Dispatchers.Default)
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            ExoAppWithRidgeRegressionTheme {
-                // A surface container using the 'background' color from the theme
-                EmgScreen(emgViewModel)
-            }
-        }
-
-        // Simulate Myo EMG data @ 200 Hz (5 ms interval)
-        scope.launch {
-            while (true) {
-                val sample = List(8) { Random.nextInt(-128, 127) } // fake EMG values
-                emgViewModel.onNewEmgSample(sample)
-                delay(5)
-            }
-        }
-
-    }
-}
-*/
